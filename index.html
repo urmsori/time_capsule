@@ -120,9 +120,15 @@
         #creator, #viewer {
             display: none;
         }
+        .server-status {
+            font-size: 12px;
+            margin-top: 5px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
+    <!-- Creator UI -->
     <div id="creator" class="container">
         <h1>Create Time Capsule Message</h1>
         <textarea id="editor" class="editor" placeholder="Write your message here..."></textarea>
@@ -174,6 +180,7 @@
         </div>
     </div>
 
+    <!-- Viewer UI -->
     <div id="viewer" class="container">
         <h1>Time Capsule Message</h1>
         <div id="passwordForm">
@@ -184,209 +191,257 @@
         </div>
         <div id="loading" class="loading">
             Checking time...
+            <div id="serverStatus" class="server-status"></div>
         </div>
         <div id="message" class="message"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <script>
-        // 모드 감지
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlData = urlParams.get('data');
-        const hasEncryptedData = !!window.ENCRYPTED_DATA;
-        const isViewerMode = urlData || hasEncryptedData;
-        
-        // 적절한 화면 표시
-        document.getElementById('creator').style.display = isViewerMode ? 'none' : 'block';
-        document.getElementById('viewer').style.display = isViewerMode ? 'block' : 'none';
-
-        // 메인 기능
-        function calculateTargetDate() {
-            const now = new Date();
-            const years = parseInt(document.getElementById('years').value) || 0;
-            const months = parseInt(document.getElementById('months').value) || 0;
-            const days = parseInt(document.getElementById('days').value) || 0;
-            const hours = parseInt(document.getElementById('hours').value) || 0;
-            const minutes = parseInt(document.getElementById('minutes').value) || 0;
-            const seconds = parseInt(document.getElementById('seconds').value) || 0;
-
-            let targetDate = new Date(now);
-            targetDate.setFullYear(targetDate.getFullYear() + years);
-            targetDate.setMonth(targetDate.getMonth() + months);
-            targetDate.setDate(targetDate.getDate() + days);
-            targetDate.setHours(targetDate.getHours() + hours);
-            targetDate.setMinutes(targetDate.getMinutes() + minutes);
-            targetDate.setSeconds(targetDate.getSeconds() + seconds);
-
-            return targetDate;
-        }
-
-        function updatePreview() {
-            const targetDate = calculateTargetDate();
-            const timePreview = document.getElementById('timePreview');
-            const timeDiff = targetDate - new Date();
-            
-            if (timeDiff <= 0) {
-                timePreview.innerHTML = 'Please set a future time';
-                timePreview.style.color = '#dc3545';
-                return;
-            }
-
-            timePreview.innerHTML = `
-                Message will be available on:<br>
-                ${targetDate.toLocaleString()}<br>
-                (${formatTimeDiff(timeDiff)} from now)
-            `;
-            timePreview.style.color = '#000';
-        }
-
-        function formatTimeDiff(ms) {
-            const seconds = Math.floor(ms / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-            const days = Math.floor(hours / 24);
-            const months = Math.floor(days / 30);
-            const years = Math.floor(months / 12);
-
-            if (years > 0) return `${years} year${years > 1 ? 's' : ''} and ${months % 12} month${months % 12 !== 1 ? 's' : ''}`;
-            if (months > 0) return `${months} month${months > 1 ? 's' : ''} and ${days % 30} day${days % 30 !== 1 ? 's' : ''}`;
-            if (days > 0) return `${days} day${days > 1 ? 's' : ''} and ${hours % 24} hour${hours % 24 !== 1 ? 's' : ''}`;
-            if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} and ${minutes % 60} minute${minutes % 60 !== 1 ? 's' : ''}`;
-            if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds % 60} second${seconds % 60 !== 1 ? 's' : ''}`;
-            return `${seconds} second${seconds !== 1 ? 's' : ''}`;
-        }
-
-        async function getCurrentTime() {
-            try {
-                const response = await fetch('http://worldtimeapi.org/api/ip');
-                const data = await response.json();
-                return new Date(data.datetime);
-            } catch (error) {
-                console.error('Error fetching time:', error);
-                return new Date();
-            }
-        }
-
-        async function createTimeCapsule() {
-            const content = document.getElementById('editor').value;
-            const password = document.getElementById('createPassword').value;
-            const targetDate = calculateTargetDate();
-
-            if (!content || !password) {
-                alert('Please enter both message and password');
-                return;
-            }
-
-            if (targetDate <= new Date()) {
-                alert('Please set a future time');
-                return;
-            }
-
-            const payload = JSON.stringify({
-                message: content,
-                targetTime: targetDate.getTime()
-            });
-
-            const encrypted = CryptoJS.AES.encrypt(payload, password).toString();
-            const encodedData = encodeURIComponent(encrypted);
-
-            const resultUrl = `${window.location.origin}${window.location.pathname}?data=${encodedData}`;
-            document.getElementById('resultUrl').value = resultUrl;
-            document.getElementById('result').style.display = 'block';
-
-            window.encryptedData = encodedData;
-        }
-
-        async function decryptMessage() {
-            const password = document.getElementById('viewPassword').value;
-            if (!password) {
-                alert('Please enter the password');
-                return;
-            }
-
-            document.getElementById('loading').style.display = 'block';
-            
-            try {
-                const encrypted = decodeURIComponent(urlData || window.ENCRYPTED_DATA);
-                const decrypted = CryptoJS.AES.decrypt(encrypted, password).toString(CryptoJS.enc.Utf8);
-                if (!decrypted) {
-                    throw new Error('Invalid password');
-                }
-
-                const data = JSON.parse(decrypted);
-                const currentTime = await getCurrentTime();
-                const targetTime = new Date(data.targetTime);
-
-                const messageElement = document.getElementById('message');
-                if (currentTime >= targetTime) {
-                    messageElement.innerHTML = `
-                        <h2>Message Opened!</h2>
-                        <div>${data.message}</div>
-                    `;
-                    document.getElementById('passwordForm').style.display = 'none';
-                } else {
-                    messageElement.innerHTML = `
-                        <h2>This message is not yet available</h2>
-                        <p>The message will be available on: ${targetTime.toLocaleString()}</p>
-                        <p>Current time: ${currentTime.toLocaleString()}</p>
-                    `;
-                }
-            } catch (error) {
-                document.getElementById('message').innerHTML = `
-                    <p class="error">Error: Invalid password or corrupted data.</p>
-                `;
-            } finally {
-                document.getElementById('loading').style.display = 'none';
-            }
-        }
-
-        function downloadViewer() {
-            if (!window.encryptedData) return;
-
-            // 현재 페이지를 복제하고 필요한 부분만 남김
-            const currentHtml = document.documentElement.cloneNode(true);
-            
-            // creator 부분 제거
-            const creator = currentHtml.querySelector('#creator');
-            if (creator) creator.remove();
-            
-            // viewer 표시
-            const viewer = currentHtml.querySelector('#viewer');
-            if (viewer) {
-                viewer.style.display = 'block';
-                const message = viewer.querySelector('#message');
-                if (message) message.innerHTML = '';
-            }
-            
-            // 암호화된 데이터 추가
-            const script = document.createElement('script');
-            script.textContent = `window.ENCRYPTED_DATA = "${window.encryptedData}";`;
-            currentHtml.querySelector('body').appendChild(script);
-
-            // 파일로 저장
-            const blob = new Blob([currentHtml.outerHTML], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'time-capsule-viewer.html';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        function copyUrl() {
-            const urlInput = document.getElementById('resultUrl');
-            urlInput.select();
-            document.execCommand('copy');
-            alert('URL copied to clipboard!');
-        }
-
-        // 초기화
-        if (!isViewerMode) {
-            document.addEventListener('DOMContentLoaded', updatePreview);
-        }
-    </script>
 </body>
 </html>
+<script>
+    // 모드 감지
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlData = urlParams.get('data');
+    const hasEncryptedData = !!window.ENCRYPTED_DATA;
+    const isViewerMode = urlData || hasEncryptedData;
+    
+    // 화면 표시
+    document.getElementById('creator').style.display = isViewerMode ? 'none' : 'block';
+    document.getElementById('viewer').style.display = isViewerMode ? 'block' : 'none';
+
+    // 개선된 시간 서버 로직
+    async function getCurrentTime() {
+        const timeServers = [
+            { url: 'http://worldtimeapi.org/api/ip', type: 'worldtime' },
+            { url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', type: 'timeapi' }
+        ];
+
+        let serverStatus = document.getElementById('serverStatus');
+        let validTimes = [];
+        let errors = [];
+
+        for (const server of timeServers) {
+            try {
+                const response = await fetch(server.url);
+                const data = await response.json();
+                let time;
+
+                switch (server.type) {
+                    case 'worldtime':
+                        time = new Date(data.datetime);
+                        break;
+                    case 'timeapi':
+                        time = new Date(data.dateTime);
+                        break;
+                }
+
+                if (time && !isNaN(time)) {
+                    validTimes.push(time);
+                    if (serverStatus) {
+                        serverStatus.innerHTML += `✓ Server ${validTimes.length} responded<br>`;
+                    }
+                }
+
+                if (validTimes.length >= 2) {  // 최소 2개의 서버에서 응답을 받으면 중단
+                    break;
+                }
+            } catch (error) {
+                errors.push(error);
+                if (serverStatus) {
+                    serverStatus.innerHTML += `× Server failed<br>`;
+                }
+            }
+        }
+
+        if (validTimes.length === 0) {
+            console.warn('All time servers failed, using local time');
+            if (serverStatus) {
+                serverStatus.innerHTML += `Using local time as fallback<br>`;
+            }
+            return new Date();
+        }
+
+        // 중간값 반환 (더 정확한 시간을 위해)
+        validTimes.sort((a, b) => a - b);
+        const medianIndex = Math.floor(validTimes.length / 2);
+        return validTimes[medianIndex];
+    }
+
+    function calculateTargetDate() {
+        const now = new Date();
+        const years = parseInt(document.getElementById('years').value) || 0;
+        const months = parseInt(document.getElementById('months').value) || 0;
+        const days = parseInt(document.getElementById('days').value) || 0;
+        const hours = parseInt(document.getElementById('hours').value) || 0;
+        const minutes = parseInt(document.getElementById('minutes').value) || 0;
+        const seconds = parseInt(document.getElementById('seconds').value) || 0;
+
+        let targetDate = new Date(now);
+        targetDate.setFullYear(targetDate.getFullYear() + years);
+        targetDate.setMonth(targetDate.getMonth() + months);
+        targetDate.setDate(targetDate.getDate() + days);
+        targetDate.setHours(targetDate.getHours() + hours);
+        targetDate.setMinutes(targetDate.getMinutes() + minutes);
+        targetDate.setSeconds(targetDate.getSeconds() + seconds);
+
+        return targetDate;
+    }
+
+    function updatePreview() {
+        const targetDate = calculateTargetDate();
+        const timePreview = document.getElementById('timePreview');
+        const timeDiff = targetDate - new Date();
+        
+        if (timeDiff <= 0) {
+            timePreview.innerHTML = 'Please set a future time';
+            timePreview.style.color = '#dc3545';
+            return;
+        }
+
+        timePreview.innerHTML = `
+            Message will be available on:<br>
+            ${targetDate.toLocaleString()}<br>
+            (${formatTimeDiff(timeDiff)} from now)
+        `;
+        timePreview.style.color = '#000';
+    }
+
+    function formatTimeDiff(ms) {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        const months = Math.floor(days / 30);
+        const years = Math.floor(months / 12);
+
+        if (years > 0) return `${years} year${years > 1 ? 's' : ''} and ${months % 12} month${months % 12 !== 1 ? 's' : ''}`;
+        if (months > 0) return `${months} month${months > 1 ? 's' : ''} and ${days % 30} day${days % 30 !== 1 ? 's' : ''}`;
+        if (days > 0) return `${days} day${days > 1 ? 's' : ''} and ${hours % 24} hour${hours % 24 !== 1 ? 's' : ''}`;
+        if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} and ${minutes % 60} minute${minutes % 60 !== 1 ? 's' : ''}`;
+        if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} and ${seconds % 60} second${seconds % 60 !== 1 ? 's' : ''}`;
+        return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+    }
+
+    async function createTimeCapsule() {
+        const content = document.getElementById('editor').value;
+        const password = document.getElementById('createPassword').value;
+        const targetDate = calculateTargetDate();
+
+        if (!content || !password) {
+            alert('Please enter both message and password');
+            return;
+        }
+
+        if (targetDate <= new Date()) {
+            alert('Please set a future time');
+            return;
+        }
+
+        const payload = JSON.stringify({
+            message: content,
+            targetTime: targetDate.getTime()
+        });
+
+        const encrypted = CryptoJS.AES.encrypt(payload, password).toString();
+        const encodedData = encodeURIComponent(encrypted);
+
+        const resultUrl = `${window.location.origin}${window.location.pathname}?data=${encodedData}`;
+        document.getElementById('resultUrl').value = resultUrl;
+        document.getElementById('result').style.display = 'block';
+
+        window.encryptedData = encodedData;
+    }
+
+    async function decryptMessage() {
+        const password = document.getElementById('viewPassword').value;
+        if (!password) {
+            alert('Please enter the password');
+            return;
+        }
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('serverStatus').innerHTML = '';
+        
+        try {
+            const encrypted = decodeURIComponent(urlData || window.ENCRYPTED_DATA);
+            const decrypted = CryptoJS.AES.decrypt(encrypted, password).toString(CryptoJS.enc.Utf8);
+            if (!decrypted) {
+                throw new Error('Invalid password');
+            }
+
+            const data = JSON.parse(decrypted);
+            const currentTime = await getCurrentTime();
+            const targetTime = new Date(data.targetTime);
+
+            const messageElement = document.getElementById('message');
+            if (currentTime >= targetTime) {
+                messageElement.innerHTML = `
+                    <h2>Message Opened!</h2>
+                    <div>${data.message}</div>
+                `;
+                document.getElementById('passwordForm').style.display = 'none';
+            } else {
+                messageElement.innerHTML = `
+                    <h2>This message is not yet available</h2>
+                    <p>The message will be available on: ${targetTime.toLocaleString()}</p>
+                    <p>Current time: ${currentTime.toLocaleString()}</p>
+                `;
+            }
+        } catch (error) {
+            document.getElementById('message').innerHTML = `
+                <p class="error">Error: Invalid password or corrupted data.</p>
+            `;
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    function downloadViewer() {
+        if (!window.encryptedData) return;
+
+        // 현재 페이지를 복제하고 필요한 부분만 남김
+        const currentHtml = document.documentElement.cloneNode(true);
+        
+        // creator 부분 제거
+        const creator = currentHtml.querySelector('#creator');
+        if (creator) creator.remove();
+        
+        // viewer 표시
+        const viewer = currentHtml.querySelector('#viewer');
+        if (viewer) {
+            viewer.style.display = 'block';
+            const message = viewer.querySelector('#message');
+            if (message) message.innerHTML = '';
+        }
+        
+        // 암호화된 데이터 추가
+        const script = document.createElement('script');
+        script.textContent = `window.ENCRYPTED_DATA = "${window.encryptedData}";`;
+        currentHtml.querySelector('body').appendChild(script);
+
+        // 파일로 저장
+        const blob = new Blob([currentHtml.outerHTML], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'time-capsule-viewer.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function copyUrl() {
+        const urlInput = document.getElementById('resultUrl');
+        urlInput.select();
+        document.execCommand('copy');
+        alert('URL copied to clipboard!');
+    }
+
+    // 초기화
+    if (!isViewerMode) {
+        document.addEventListener('DOMContentLoaded', updatePreview);
+    }
+</script>
