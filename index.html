@@ -73,7 +73,7 @@
             border-radius: 4px;
         }
         .time-input input[type="datetime-local"] {
-            width: calc(100% - 16px);  /* 패딩 고려 */
+            width: calc(100% - 16px);
         }
         .preview-time {
             margin-top: 10px;
@@ -157,6 +157,11 @@
             background: #f8f9fa;
             border-radius: 4px;
         }
+        .timezone-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -202,8 +207,9 @@
 
         <div class="time-inputs" id="datetimeInput" style="display: none;">
             <div class="time-input">
-                <label for="specificDateTime">Target Date and Time (UTC)</label>
+                <label for="specificDateTime">Target Date and Time (Your local time)</label>
                 <input type="datetime-local" id="specificDateTime" onchange="updatePreview()">
+                <div class="timezone-info">Your timezone: <span id="userTimezone"></span></div>
             </div>
         </div>
 
@@ -256,6 +262,11 @@
     document.getElementById('creator').style.display = isViewerMode ? 'none' : 'block';
     document.getElementById('viewer').style.display = isViewerMode ? 'block' : 'none';
 
+    // 사용자 시간대 표시
+    if (!isViewerMode) {
+        document.getElementById('userTimezone').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
     // UTC 시간 가져오기
     async function getCurrentUTCTime() {
         let serverStatus = document.getElementById('serverStatus');
@@ -280,8 +291,14 @@
             serverStatus.innerHTML = 'Using system UTC time<br>';
         }
         const now = new Date();
-        const nowUTC = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
-        return nowUTC;
+        return new Date(Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate(),
+            now.getUTCHours(),
+            now.getUTCMinutes(),
+            now.getUTCSeconds()
+        ));
     }
 
     function toggleTimeMode() {
@@ -297,10 +314,19 @@
         if (mode === 'datetime') {
             const dateInput = document.getElementById('specificDateTime').value;
             if (!dateInput) return new Date(Date.now() + 3600000); // 기본값 1시간
-            return new Date(dateInput);
+            
+            // 입력된 로컬 시간을 UTC로 변환
+            const localDate = new Date(dateInput);
+            return new Date(Date.UTC(
+                localDate.getFullYear(),
+                localDate.getMonth(),
+                localDate.getDate(),
+                localDate.getHours(),
+                localDate.getMinutes()
+            ));
         }
 
-        // Duration mode (기존 코드)
+        // Duration mode
         const now = new Date();
         const years = parseInt(document.getElementById('years').value) || 0;
         const months = parseInt(document.getElementById('months').value) || 0;
@@ -309,14 +335,14 @@
         const minutes = parseInt(document.getElementById('minutes').value) || 0;
         const seconds = parseInt(document.getElementById('seconds').value) || 0;
 
-        const nowUTC = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
-        const targetDate = new Date(nowUTC);
-        targetDate.setUTCFullYear(targetDate.getUTCFullYear() + years);
-        targetDate.setUTCMonth(targetDate.getUTCMonth() + months);
-        targetDate.setUTCDate(targetDate.getUTCDate() + days);
-        targetDate.setUTCHours(targetDate.getUTCHours() + hours);
-        targetDate.setUTCMinutes(targetDate.getUTCMinutes() + minutes);
-        targetDate.setUTCSeconds(targetDate.getUTCSeconds() + seconds);
+        const targetDate = new Date(Date.UTC(
+            now.getUTCFullYear() + years,
+            now.getUTCMonth() + months,
+            now.getUTCDate() + days,
+            now.getUTCHours() + hours,
+            now.getUTCMinutes() + minutes,
+            now.getUTCSeconds() + seconds
+        ));
 
         return targetDate;
     }
@@ -509,7 +535,15 @@
             // datetime-local 입력의 기본값 설정 (1시간 후)
             const now = new Date();
             now.setHours(now.getHours() + 1);
-            const defaultDateTime = now.toISOString().slice(0, 16); // datetime-local 형식으로 변환
+            
+            // 로컬 시간을 datetime-local 형식으로 변환
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            
+            const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
             document.getElementById('specificDateTime').value = defaultDateTime;
             updatePreview();
         });
