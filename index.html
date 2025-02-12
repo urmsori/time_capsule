@@ -238,14 +238,8 @@
             serverStatus.innerHTML = 'Using system UTC time<br>';
         }
         const now = new Date();
-        return new Date(Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate(),
-            now.getUTCHours(),
-            now.getUTCMinutes(),
-            now.getUTCSeconds()
-        ));
+        const nowUTC = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
+        return nowUTC;
     }
 
     // UTC 기준으로 목표 시간 계산
@@ -258,14 +252,19 @@
         const minutes = parseInt(document.getElementById('minutes').value) || 0;
         const seconds = parseInt(document.getElementById('seconds').value) || 0;
 
-        return new Date(Date.UTC(
-            now.getUTCFullYear() + years,
-            now.getUTCMonth() + months,
-            now.getUTCDate() + days,
-            now.getUTCHours() + hours,
-            now.getUTCMinutes() + minutes,
-            now.getUTCSeconds() + seconds
-        ));
+        // 현재 시스템 시간을 UTC로 변환
+        const nowUTC = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
+
+        // UTC 기준으로 목표 시간 설정
+        const targetDate = new Date(nowUTC);
+        targetDate.setUTCFullYear(targetDate.getUTCFullYear() + years);
+        targetDate.setUTCMonth(targetDate.getUTCMonth() + months);
+        targetDate.setUTCDate(targetDate.getUTCDate() + days);
+        targetDate.setUTCHours(targetDate.getUTCHours() + hours);
+        targetDate.setUTCMinutes(targetDate.getUTCMinutes() + minutes);
+        targetDate.setUTCSeconds(targetDate.getUTCSeconds() + seconds);
+
+        return targetDate;
     }
 
     async function updatePreview() {
