@@ -280,12 +280,13 @@
                 if (serverStatus) {
                     serverStatus.innerHTML = '✓ Server time received<br>';
                 }
-                return serverTime;
+                // UTC 시간을 로컬 시간으로 변환
+                return new Date(serverTime.getTime() + (new Date().getTimezoneOffset() * 60000));
             }
         } catch (error) {
             console.warn('Time server failed:', error);
         }
-
+    
         // Server failed, use system time
         if (serverStatus) {
             serverStatus.innerHTML = 'Using system time<br>';
@@ -435,7 +436,7 @@
                         <p>UTC: ${targetTime.toUTCString()}</p>
                         <p>Local: ${targetTime.toLocaleString()}</p>
                         <p><strong>Current time:</strong></p>
-                        <p>UTC: ${currentTime.toUTCString()}</p>
+                        <p>UTC: ${new Date(currentTime.getTime() - (currentTime.getTimezoneOffset() * 60000)).toUTCString()}</p>
                         <p>Local: ${currentTime.toLocaleString()}</p>
                     </div>
                 `;
