@@ -281,7 +281,7 @@
                     serverStatus.innerHTML = '✓ Server time received<br>';
                 }
                 // UTC 시간을 로컬 시간으로 변환
-                return new Date(serverTime.getTime() + (new Date().getTimezoneOffset() * 60000));
+                return new serverTime;
             }
         } catch (error) {
             console.warn('Time server failed:', error);
