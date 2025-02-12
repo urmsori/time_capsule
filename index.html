@@ -125,10 +125,15 @@
             margin-top: 5px;
             color: #666;
         }
+        .time-info {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
-    <!-- Creator UI -->
     <div id="creator" class="container">
         <h1>Create Time Capsule Message</h1>
         <textarea id="editor" class="editor" placeholder="Write your message here..."></textarea>
@@ -180,7 +185,6 @@
         </div>
     </div>
 
-    <!-- Viewer UI -->
     <div id="viewer" class="container">
         <h1>Time Capsule Message</h1>
         <div id="passwordForm">
@@ -210,64 +214,41 @@
     document.getElementById('creator').style.display = isViewerMode ? 'none' : 'block';
     document.getElementById('viewer').style.display = isViewerMode ? 'block' : 'none';
 
-    // 개선된 시간 서버 로직
-    async function getCurrentTime() {
-        const timeServers = [
-            { url: 'http://worldtimeapi.org/api/ip', type: 'worldtime' },
-            { url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', type: 'timeapi' }
-        ];
-
+    // UTC 시간 가져오기
+    async function getCurrentUTCTime() {
         let serverStatus = document.getElementById('serverStatus');
-        let validTimes = [];
-        let errors = [];
-
-        for (const server of timeServers) {
-            try {
-                const response = await fetch(server.url);
-                const data = await response.json();
-                let time;
-
-                switch (server.type) {
-                    case 'worldtime':
-                        time = new Date(data.datetime);
-                        break;
-                    case 'timeapi':
-                        time = new Date(data.dateTime);
-                        break;
-                }
-
-                if (time && !isNaN(time)) {
-                    validTimes.push(time);
-                    if (serverStatus) {
-                        serverStatus.innerHTML += `✓ Server ${validTimes.length} responded<br>`;
-                    }
-                }
-
-                if (validTimes.length >= 2) {  // 최소 2개의 서버에서 응답을 받으면 중단
-                    break;
-                }
-            } catch (error) {
-                errors.push(error);
+        
+        try {
+            const response = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC');
+            const data = await response.json();
+            const serverTime = new Date(data.dateTime);
+            
+            if (serverTime && !isNaN(serverTime)) {
                 if (serverStatus) {
-                    serverStatus.innerHTML += `× Server failed<br>`;
+                    serverStatus.innerHTML = '✓ Server time received<br>';
                 }
+                return serverTime;
             }
+        } catch (error) {
+            console.warn('Time server failed:', error);
         }
 
-        if (validTimes.length === 0) {
-            console.warn('All time servers failed, using local time');
-            if (serverStatus) {
-                serverStatus.innerHTML += `Using local time as fallback<br>`;
-            }
-            return new Date();
+        // Server failed, use system UTC time
+        if (serverStatus) {
+            serverStatus.innerHTML = 'Using system UTC time<br>';
         }
-
-        // 중간값 반환 (더 정확한 시간을 위해)
-        validTimes.sort((a, b) => a - b);
-        const medianIndex = Math.floor(validTimes.length / 2);
-        return validTimes[medianIndex];
+        const now = new Date();
+        return new Date(Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate(),
+            now.getUTCHours(),
+            now.getUTCMinutes(),
+            now.getUTCSeconds()
+        ));
     }
 
+    // UTC 기준으로 목표 시간 계산
     function calculateTargetDate() {
         const now = new Date();
         const years = parseInt(document.getElementById('years').value) || 0;
@@ -277,21 +258,21 @@
         const minutes = parseInt(document.getElementById('minutes').value) || 0;
         const seconds = parseInt(document.getElementById('seconds').value) || 0;
 
-        let targetDate = new Date(now);
-        targetDate.setFullYear(targetDate.getFullYear() + years);
-        targetDate.setMonth(targetDate.getMonth() + months);
-        targetDate.setDate(targetDate.getDate() + days);
-        targetDate.setHours(targetDate.getHours() + hours);
-        targetDate.setMinutes(targetDate.getMinutes() + minutes);
-        targetDate.setSeconds(targetDate.getSeconds() + seconds);
-
-        return targetDate;
+        return new Date(Date.UTC(
+            now.getUTCFullYear() + years,
+            now.getUTCMonth() + months,
+            now.getUTCDate() + days,
+            now.getUTCHours() + hours,
+            now.getUTCMinutes() + minutes,
+            now.getUTCSeconds() + seconds
+        ));
     }
 
-    function updatePreview() {
+    async function updatePreview() {
         const targetDate = calculateTargetDate();
         const timePreview = document.getElementById('timePreview');
-        const timeDiff = targetDate - new Date();
+        const currentUTCTime = await getCurrentUTCTime();
+        const timeDiff = targetDate - currentUTCTime;
         
         if (timeDiff <= 0) {
             timePreview.innerHTML = 'Please set a future time';
@@ -301,7 +282,8 @@
 
         timePreview.innerHTML = `
             Message will be available on:<br>
-            ${targetDate.toLocaleString()}<br>
+            UTC: ${targetDate.toUTCString()}<br>
+            Local: ${targetDate.toLocaleString()}<br>
             (${formatTimeDiff(timeDiff)} from now)
         `;
         timePreview.style.color = '#000';
@@ -333,7 +315,8 @@
             return;
         }
 
-        if (targetDate <= new Date()) {
+        const currentUTCTime = await getCurrentUTCTime();
+        if (targetDate <= currentUTCTime) {
             alert('Please set a future time');
             return;
         }
@@ -371,11 +354,11 @@
             }
 
             const data = JSON.parse(decrypted);
-            const currentTime = await getCurrentTime();
+            const currentUTCTime = await getCurrentUTCTime();
             const targetTime = new Date(data.targetTime);
 
             const messageElement = document.getElementById('message');
-            if (currentTime >= targetTime) {
+            if (currentUTCTime >= targetTime) {
                 messageElement.innerHTML = `
                     <h2>Message Opened!</h2>
                     <div>${data.message}</div>
@@ -384,8 +367,14 @@
             } else {
                 messageElement.innerHTML = `
                     <h2>This message is not yet available</h2>
-                    <p>The message will be available on: ${targetTime.toLocaleString()}</p>
-                    <p>Current time: ${currentTime.toLocaleString()}</p>
+                    <div class="time-info">
+                        <p><strong>Will be available on:</strong></p>
+                        <p>UTC: ${targetTime.toUTCString()}</p>
+                        <p>Local: ${targetTime.toLocaleString()}</p>
+                        <p><strong>Current time:</strong></p>
+                        <p>UTC: ${currentUTCTime.toUTCString()}</p>
+                        <p>Local: ${currentUTCTime.toLocaleString()}</p>
+                    </div>
                 `;
             }
         } catch (error) {
