@@ -29,6 +29,29 @@
             font-family: inherit;
             line-height: 1.5;
         }
+        .time-mode-selector {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f4ff;
+            border-radius: 4px;
+            border: 1px solid #e0e7ff;
+        }
+        .time-mode-selector label {
+            margin-right: 20px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 10px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .time-mode-selector label:hover {
+            background: #f8f9fa;
+        }
+        .time-mode-selector input[type="radio"] {
+            margin-right: 8px;
+        }
         .time-inputs {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -48,6 +71,9 @@
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
+        }
+        .time-input input[type="datetime-local"] {
+            width: calc(100% - 16px);  /* 패딩 고려 */
         }
         .preview-time {
             margin-top: 10px;
@@ -138,7 +164,16 @@
         <h1>Create Time Capsule Message</h1>
         <textarea id="editor" class="editor" placeholder="Write your message here..."></textarea>
         
-        <div class="time-inputs">
+        <div class="time-mode-selector">
+            <label>
+                <input type="radio" name="timeMode" value="duration" checked onchange="toggleTimeMode()"> Set by duration
+            </label>
+            <label>
+                <input type="radio" name="timeMode" value="datetime" onchange="toggleTimeMode()"> Set specific date/time
+            </label>
+        </div>
+
+        <div class="time-inputs" id="durationInputs">
             <div class="time-input">
                 <label for="years">Years</label>
                 <input type="number" id="years" min="0" value="0" onchange="updatePreview()">
@@ -162,6 +197,13 @@
             <div class="time-input">
                 <label for="seconds">Seconds</label>
                 <input type="number" id="seconds" min="0" max="59" value="0" onchange="updatePreview()">
+            </div>
+        </div>
+
+        <div class="time-inputs" id="datetimeInput" style="display: none;">
+            <div class="time-input">
+                <label for="specificDateTime">Target Date and Time (UTC)</label>
+                <input type="datetime-local" id="specificDateTime" onchange="updatePreview()">
             </div>
         </div>
 
@@ -242,8 +284,23 @@
         return nowUTC;
     }
 
-    // UTC 기준으로 목표 시간 계산
+    function toggleTimeMode() {
+        const mode = document.querySelector('input[name="timeMode"]:checked').value;
+        document.getElementById('durationInputs').style.display = mode === 'duration' ? 'grid' : 'none';
+        document.getElementById('datetimeInput').style.display = mode === 'datetime' ? 'grid' : 'none';
+        updatePreview();
+    }
+
     function calculateTargetDate() {
+        const mode = document.querySelector('input[name="timeMode"]:checked').value;
+        
+        if (mode === 'datetime') {
+            const dateInput = document.getElementById('specificDateTime').value;
+            if (!dateInput) return new Date(Date.now() + 3600000); // 기본값 1시간
+            return new Date(dateInput);
+        }
+
+        // Duration mode (기존 코드)
         const now = new Date();
         const years = parseInt(document.getElementById('years').value) || 0;
         const months = parseInt(document.getElementById('months').value) || 0;
@@ -252,10 +309,7 @@
         const minutes = parseInt(document.getElementById('minutes').value) || 0;
         const seconds = parseInt(document.getElementById('seconds').value) || 0;
 
-        // 현재 시스템 시간을 UTC로 변환
         const nowUTC = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
-
-        // UTC 기준으로 목표 시간 설정
         const targetDate = new Date(nowUTC);
         targetDate.setUTCFullYear(targetDate.getUTCFullYear() + years);
         targetDate.setUTCMonth(targetDate.getUTCMonth() + months);
@@ -408,17 +462,38 @@
         script.textContent = `window.ENCRYPTED_DATA = "${window.encryptedData}";`;
         currentHtml.querySelector('body').appendChild(script);
 
-        // 파일로 저장
-        const blob = new Blob([currentHtml.outerHTML], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'time-capsule-viewer.html';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        try {
+            // 파일명에 날짜 추가
+            const decrypted = CryptoJS.AES.decrypt(decodeURIComponent(window.encryptedData), document.getElementById('createPassword').value).toString(CryptoJS.enc.Utf8);
+            const data = JSON.parse(decrypted);
+            const targetTime = new Date(data.targetTime);
+            const dateStr = targetTime.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, -5);
+            const fileName = `time_capsule_${dateStr}.html`;
+
+            // 파일로 저장
+            const blob = new Blob([currentHtml.outerHTML], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            // 파일명 생성 실패시 기본 이름 사용
+            const blob = new Blob([currentHtml.outerHTML], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'time_capsule.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
     }
 
     function copyUrl() {
@@ -430,6 +505,13 @@
 
     // 초기화
     if (!isViewerMode) {
-        document.addEventListener('DOMContentLoaded', updatePreview);
+        document.addEventListener('DOMContentLoaded', () => {
+            // datetime-local 입력의 기본값 설정 (1시간 후)
+            const now = new Date();
+            now.setHours(now.getHours() + 1);
+            const defaultDateTime = now.toISOString().slice(0, 16); // datetime-local 형식으로 변환
+            document.getElementById('specificDateTime').value = defaultDateTime;
+            updatePreview();
+        });
     }
 </script>
